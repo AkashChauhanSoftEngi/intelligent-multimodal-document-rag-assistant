@@ -7,6 +7,7 @@ pdfplumber==0.11.4
 PyMuPDF==1.24.10
 python-pptx==0.6.23
 Pillow==10.4.0
+anthropic==0.34.2
 
 # Optional local backends (installed but only loaded if
 # EMBEDDING_BACKEND=local or TABLE_PARSER_BACKEND=local is set)
