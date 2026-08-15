@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intelligent Document QA System — Multimodal RAG</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Intelligent Document Question Answering System — Multimodal RAG</h1>
+
+    <div class="tech-bar">
+      <span><strong>Approach:</strong> Retrieval-Augmented Generation (RAG)</span>
+      <span class="separator">|</span>
+      <span><strong>Embedding:</strong> 
+        {% if embedding_backend == 'gemini' %}
+            <strong>Gemini API (models/gemini-embedding-001)</strong> / Local (all-MiniLM-L6-v2)
+        {% elif embedding_backend == 'local' %}
+            Gemini API (models/gemini-embedding-001) / <strong>Local (all-MiniLM-L6-v2)</strong>
+        {% else %}
+            <strong>OpenAI API (text-embedding-3-small)</strong> / Local (all-MiniLM-L6-v2)
+        {% endif %}
+      </span>
+      <span class="separator">|</span>
+      <span><strong>Table Parsing:</strong> {{ 'pdfplumber + Gemini cleanup (API)' if table_parser_backend == 'api' else 'pdfplumber heuristic (Local)' }}</span>
+      <span class="separator">|</span>
+      <span><strong>Vision:</strong> Gemini Vision API</span>
+      <span class="separator">|</span>
+      <span><strong>Vector DB:</strong> FAISS (Local)</span>
+      <span class="separator">|</span>
+      <span><strong>LLM:</strong> Gemini (Google AI API)</span>
+    </div>
+
+    <div class="rag-pipeline">
+      <div class="pipeline-step">📄 Document</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">✂️ Text / Tables / Images</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">🧠 Embedding (Gemini / Local) + 📊 Table Parsing + 👁️ Vision</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">🗄️ FAISS Retrieval</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">🤖 Gemini LLM</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">💬 Answer + Citation</div>
+    </div>
+
+    <div class="system-info">
+      Architecture: Optimized for Render (512MB RAM). Recommend API-based backends for memory stability.
+    </div>
+
+
+    {% if not has_gemini_key %}
+    <div class="key-warning">⚠️ GEMINI_API_KEY is not set on this deployment — image captions and generated answers are disabled. Retrieval still works.</div>
+    {% endif %}
+  </header>
+
+  <div class="main-grid">
+
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <h2>1. Quick Start</h2>
+      <p>Try the application instantly using the sample revenue report, or upload your own document.</p>
+
+      <div class="sample-document">
+        <button id="sampleBtn" class="source-btn" type="button">
+          {% if sample_loaded %}✓ Sample Revenue Report Loaded{% else %}Load Sample Revenue Report{% endif %}
+        </button>
+        <p style="text-align: center; margin-top: 8px; font-size: 12px;">
+            <a href="/sample_data/Annual_Revenue_Report_2025.pdf" target="_blank" style="color: var(--accent);">View Sample PDF</a>
+        </p>
+      </div>
+
+      <div class="divider"><span>OR</span></div>
+
+      <h3>Upload Your Own Document</h3>
+      <p class="upload-note">Supported formats: PDF, PPTX &middot; text, tables &amp; images</p>
+
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".pdf,.pptx" hidden>
+        <span class="dz-icon">&#8593;</span>
+        <span class="dz-text">Click or drag a file here</span>
+      </label>
+      <div id="uploadStatus" class="upload-status"></div>
+
+      <div id="docInfoPanel" class="document-info" {% if not doc_names %}hidden{% endif %}>
+        <h3>Document Information</h3>
+        <ul id="docInfoList" class="doc-list">
+          {% for name in doc_names %}
+          <li>📄 {{ name }}</li>
+          {% endfor %}
+        </ul>
+        <p id="docInfoStats" class="doc-stats"></p>
+      </div>
+
+      <button id="resetBtn" class="reset-btn" type="button">Clear index</button>
+    </div>
+
+    <!-- CENTER PANEL -->
+    <div class="center-panel">
+      <h2>2. Ask Questions</h2>
+
+      <form id="askForm" class="ask-form">
+        <textarea id="questionInput" placeholder="Type your question here…" rows="3" required></textarea>
+        <button type="submit" id="askBtn">Ask Question</button>
+      </form>
+
+      <div id="chatStream" class="chat-stream">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🔎</div>
+          <p>Load the sample revenue report or upload your own, then ask a question like</p>
+          <p class="example">"How much did revenue increase between 2024 and 2025?"</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel" id="rightPanel" {% if not sample_loaded %}hidden{% endif %}>
+      <h2>Sample Questions</h2>
+      <p class="question-note">(For the Sample Revenue Report)</p>
+      <div id="sampleQuestionList">
+        {% for q in sample_questions %}
+        <div class="question-card" onclick="fillQuestion(this)">{{ q }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<template id="cardTemplate">
+  <div class="qa-card">
+    <div class="qa-section qa-question">
+      <div class="qa-label">Question</div>
+      <div class="qa-question-text"></div>
+    </div>
+    <div class="qa-divider"></div>
+    <div class="qa-section qa-answer">
+      <div class="qa-label">Answer</div>
+      <div class="qa-answer-text"></div>
+    </div>
+    <div class="qa-divider"></div>
+    <div class="qa-section qa-sources">
+      <div class="qa-label">Source</div>
+      <div class="qa-source-list"></div>
+    </div>
+  </div>
+</template>
+
+<template id="sourceTemplate">
+  <div class="source-item">
+    <div class="source-line">📄 <span class="source-doc"></span></div>
+    <div class="source-line">📑 <span class="source-page"></span></div>
+    <div class="source-line source-label-line">📊 <span class="source-label"></span></div>
+    <button class="evidence-btn">View Evidence</button>
+    <div class="evidence-body" hidden></div>
+  </div>
+</template>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
