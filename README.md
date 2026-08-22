@@ -281,6 +281,16 @@ Because FAISS databases and uploaded image files are saved locally, a persistent
 
 ---
 
+# 🚀 Technical Considerations & Future Improvements
+
+While the current system architecture is modular and optimized for multimodal accuracy, the following areas have been identified for future scalability improvements:
+
+- **Asynchronous Ingestion:** Implement background task queues (e.g., Celery/Redis) to handle document processing, improving user experience by avoiding synchronous blocking during high-latency VLM/parsing tasks.
+- **VLM Output Caching:** Introduce a persistent cache layer for VLM-generated descriptions (captions and table summaries) to avoid redundant computation for previously processed assets.
+- **Hybrid Table Indexing:** Implement a dual-index approach for tabular data—storing both the LLM-generated summary and the raw Markdown structure—to improve performance for data-heavy, query-specific reasoning.
+
+---
+
 # 📝 License
 
 Distributed under the MIT License. See `LICENSE` for more information (if applicable).
